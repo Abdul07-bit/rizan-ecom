@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rizan Jewellery Singapore</title>
+<meta name="description" id="md" content="Gold and silver bullion from Rizan Jewellery, Singapore.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shop.css">
+</head><body>
+<main><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb" id="crumbs"><a href="/">Home</a><span>/</span><a href="/#shop">Shop</a></nav>
+  <div id="pd" class="pd"><div class="skel"></div></div>
+  <section class="rel" id="rel" hidden><h2>More like this</h2><div class="pg" id="relg"></div></section>
+</div></main>
+<script src="/shop.js"></script>
+<script>
+mountChrome();
+const slug = decodeURIComponent(location.pathname.split('/')[2] || '');
+let P = null, qty = 1;
+
+function stockInfo(p) {
+  if (!p.available) return ['out', 'Sold out'];
+  if (p.stockLeft != null) return ['low', `Only ${p.stockLeft} left`];
+  return ['in', 'In stock'];
+}
+
+/* static part: built once so the quantity box keeps focus while the price refreshes */
+function build() {
+  const p = P, metal = p.metal === 'silver' ? 'Silver' : 'Gold';
+  document.title = `${p.name} | Rizan Jewellery Singapore`;
+  $('md').content = `Buy ${p.name} in Singapore. ${fmtWeight(p)}, ${fineness(p)} fineness${p.manufacturer ? ', by ' + p.manufacturer : ''}.`;
+  $('crumbs').innerHTML = `<a href="/">Home</a><span>/</span><a href="/?m=${p.metal}#shop">${metal}</a><span>/</span><span aria-current="page">${esc(p.name)}</span>`;
+  const fine = (grams(p) * p.purity).toFixed(4).replace(/\.?0+$/, '');
+  $('pd').innerHTML = `
+  <div class="gal"><div class="im ${p.available ? '' : 'so'}">${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}">` : `<div class="ph">${esc(fmtWeight(p))}</div>`}<span class="ribbon" id="rib" hidden>Sold out</span></div></div>
+  <div class="info">
+    ${p.manufacturer ? `<div class="mf">${esc(p.manufacturer)}</div>` : ''}
+    <h1>${esc(p.name)}</h1>
+    <div class="price" id="price"></div><span class="stk" id="stk"></span>
+    ${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
+    <div class="buy">
+      <div class="qrow">
+        <div class="qty"><button type="button" id="mn" aria-label="Decrease quantity">&minus;</button><input id="q" type="number" inputmode="numeric" min="1" value="1" aria-label="Quantity"><button type="button" id="pl" aria-label="Increase quantity">+</button></div>
+        <button class="btn g" id="add" type="button">Add to cart</button>
+      </div>
+      <button class="btn o wide" id="now" type="button">Buy now</button>
+      <div class="subt" id="subt"></div>
+    </div>
+    <div class="specs"><h2>Specifications</h2><dl>
+      <dt>Metal</dt><dd>${metal}</dd>
+      <dt>Type</dt><dd>${esc(p.category)}</dd>
+      ${p.manufacturer ? `<dt>Manufacturer</dt><dd>${esc(p.manufacturer)}</dd>` : ''}
+      <dt>Weight</dt><dd>${esc(fmtWeight(p))}</dd>
+      <dt>Purity</dt><dd>${fineness(p)}</dd>
+      <dt>Fine ${metal.toLowerCase()} content</dt><dd>${fine} g</dd>
+    </dl></div>
+    <div class="trust"><span>Priced from the live market rate</span><span>Price confirmed when you place your order</span></div>
+  </div>`;
+  $('mn').onclick = () => setQty(qty - 1);
+  $('pl').onclick = () => setQty(qty + 1);
+  $('q').oninput = (e) => { const v = parseInt(e.target.value, 10); if (v) setQty(v, false); };
+  $('q').onblur = () => ($('q').value = qty);
+  $('add').onclick = () => addToCart(false);
+  $('now').onclick = () => addToCart(true);
+  paint();
+}
+
+/* dynamic part: price, stock, buttons. Safe to call every refresh. */
+function paint() {
+  const p = P, ok = p.available && p.priceCents != null, [cls, txt] = stockInfo(p);
+  $('price').className = 'price' + (p.priceCents == null ? ' na' : '');
+  $('price').textContent = p.priceCents != null ? sgd(p.priceCents / 100) : 'Price unavailable';
+  $('stk').className = 'stk ' + cls; $('stk').textContent = p.priceCents == null && p.available ? 'Price being updated, please check back shortly' : txt;
+  $('rib').hidden = p.available;
+  for (const id of ['add', 'now', 'mn', 'pl', 'q']) $(id).disabled = !ok;
+  $('add').textContent = p.available ? 'Add to cart' : 'Sold out';
+  if (qty > maxQty(p)) qty = Math.max(1, maxQty(p));
+  $('q').value = qty; $('q').max = maxQty(p);
+  $('pl').disabled = !ok || qty >= maxQty(p); $('mn').disabled = !ok || qty <= 1;
+  $('subt').textContent = ok && qty > 1 ? `${qty} × ${sgd(p.priceCents / 100)} = ${sgd((p.priceCents * qty) / 100)}` : '';
+}
+
+function setQty(n, writeBack = true) {
+  qty = Math.max(1, Math.min(maxQty(P), n));
+  if (writeBack) $('q').value = qty;
+  paint();
+}
+
+function addToCart(goCheckout) {
+  if (!P.available || P.priceCents == null) return;
+  const have = Cart.read()[P.id] || 0;
+  if (have + qty > maxQty(P) && !goCheckout) {
+    toast(`You already have ${have} in your cart. Only ${maxQty(P)} available.`); return;
+  }
+  Cart.add(P.id, qty, maxQty(P));
+  if (goCheckout) { location.href = '/checkout'; return; }
+  toast(`Added ${qty} × ${esc(P.name)} <a href="/cart">View cart</a>`, 4500);
+}
+
+async function refresh() {
+  try { const fresh = await getJSON('/api/products/' + encodeURIComponent(slug)); P = fresh; paint(); } catch {}
+}
+
+function stateBox(title, msg) {
+  document.title = title + ' | Rizan Jewellery Singapore';
+  $('pd').innerHTML = `<div class="state"><h2>${title}</h2><p>${msg}</p><a class="btn g" href="/#shop">Back to shop</a></div>`;
+}
+
+async function related() {
+  try {
+    const list = (await getProducts()).filter((x) => x.metal === P.metal && x.id !== P.id)
+      .sort((a, b) => Number(b.available) - Number(a.available)).slice(0, 4);
+    if (!list.length) return;
+    $('relg').innerHTML = list.map((x) => `<a class="pc" href="/product/${esc(x.slug)}"><div class="im">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : `<div class="ph">${esc(fmtWeight(x))}</div>`}</div>
+      <div class="b"><span class="m">${esc(x.manufacturer || '')}</span><h3>${esc(x.name)}</h3><div class="pr">${x.available ? (x.priceCents != null ? sgd(x.priceCents / 100) : 'Price unavailable') : 'Sold out'}</div></div></a>`).join('');
+    $('rel').hidden = false;
+  } catch {}
+}
+
+(async () => {
+  try { P = await getJSON('/api/products/' + encodeURIComponent(slug)); }
+  catch (e) {
+    return e.status === 404 ? stateBox('Product not found', 'This product is no longer available or the link is wrong.')
+      : stateBox('Something went wrong', 'We could not load this product. Please try again in a moment.');
+  }
+  build(); related(); setInterval(refresh, 30000);
+})();
+</script>
+</body></html>

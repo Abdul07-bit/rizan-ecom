@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your cart | Rizan Jewellery Singapore</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shop.css">
+</head><body>
+<main><div class="wrap">
+  <div class="steps" aria-label="Checkout progress"><span class="on">1 Cart</span><span>2 Details</span><span>3 Confirmation</span></div>
+  <h1 class="ph1">Your cart</h1>
+  <div id="notice"></div>
+  <div id="cart"><div class="skel" style="height:240px"></div></div>
+</div></main>
+<script src="/shop.js"></script>
+<script>
+mountChrome();
+let ALL = null, removedNote = false;
+
+const byId = (id) => ALL.find((p) => p.id === id);
+
+function draw() {
+  if (!ALL) return;
+  const cart = Cart.read(), ids = Object.keys(cart);
+  // products that were deleted/hidden by the shop are dropped, with a notice
+  const gone = ids.filter((id) => !byId(id));
+  if (gone.length) { gone.forEach((id) => Cart.remove(id)); removedNote = true; return draw(); }
+  $('notice').innerHTML = removedNote ? '<div class="alert">Some items are no longer sold and were removed from your cart.</div>' : '';
+
+  if (!ids.length) {
+    $('cart').innerHTML = `<div class="state"><h2>Your cart is empty</h2><p>Add a gold or silver product to get started.</p><a class="btn g" href="/#shop">Browse the shop</a></div>`;
+    return;
+  }
+  const rows = ids.map((id) => ({ p: byId(id), q: cart[id] }));
+  const bad = (l) => !l.p.available || l.p.priceCents == null;
+  const anyBad = rows.some(bad);
+  const total = rows.reduce((s, l) => s + (bad(l) ? 0 : l.p.priceCents * l.q), 0);
+  const units = rows.reduce((s, l) => s + l.q, 0);
+
+  $('cart').innerHTML = `<div class="two"><div class="cl">${rows.map((l) => {
+    const p = l.p, over = l.q > maxQty(p);
+    return `<div class="cr ${bad(l) ? 'bad' : ''}" data-id="${esc(p.id)}">
+      <a class="t" href="/product/${esc(p.slug)}" aria-label="${esc(p.name)}">${p.image ? `<img src="${esc(p.image)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="ph">${esc(fmtWeight(p))}</div>`}</a>
+      <div class="n"><a href="/product/${esc(p.slug)}">${esc(p.name)}</a>
+        <div class="u">${p.priceCents != null ? sgd(p.priceCents / 100) + ' each' : 'Price unavailable'} &middot; ${esc(fmtWeight(p))}</div>
+        ${!p.available ? '<div class="flag">Sold out. Remove it to continue.</div>' : p.priceCents == null ? '<div class="flag">Price is being updated. Please check back shortly.</div>' : over ? `<div class="flag">Only ${maxQty(p)} available.</div>` : ''}
+        <div class="ctl"><div class="qty"><button type="button" data-d="-1" aria-label="Decrease quantity">&minus;</button><input type="number" inputmode="numeric" min="1" max="${maxQty(p)}" value="${l.q}" data-q aria-label="Quantity"><button type="button" data-d="1" aria-label="Increase quantity" ${l.q >= maxQty(p) ? 'disabled' : ''}>+</button></div>
+        <button class="rm" type="button" data-rm>Remove</button></div></div>
+      <div class="lt">${bad(l) ? '&ndash;' : sgd((p.priceCents * l.q) / 100)}</div></div>`;
+  }).join('')}</div>
+  <aside class="sum" aria-label="Order summary"><h2>Order summary</h2>
+    <div class="ln"><span>Items (${units})</span><span>${sgd(total / 100)}</span></div>
+    <div class="ln tot"><span>Total</span><b>${sgd(total / 100)}</b></div>
+    <a class="btn g wide" href="/checkout" ${anyBad ? 'aria-disabled="true" tabindex="-1"' : ''}>Checkout</a>
+    ${anyBad ? '<p class="err">Remove unavailable items to continue.</p>' : ''}
+    <p class="note">Prices follow the live market and are confirmed when you place your order.</p>
+    <a class="btn o wide" href="/#shop">Continue shopping</a>
+  </aside></div>`;
+}
+
+function onCartChanged() { draw(); }
+
+$('cart').addEventListener('click', (e) => {
+  const row = e.target.closest('.cr'); if (!row) return;
+  const id = row.dataset.id, p = byId(id), cur = Cart.read()[id] || 1;
+  if (e.target.closest('[data-rm]')) { Cart.remove(id); draw(); return; }
+  const d = e.target.closest('[data-d]');
+  if (d) { Cart.set(id, Math.max(1, Math.min(maxQty(p), cur + Number(d.dataset.d)))); draw(); }
+});
+$('cart').addEventListener('change', (e) => {
+  const inp = e.target.closest('[data-q]'); if (!inp) return;
+  const id = inp.closest('.cr').dataset.id, p = byId(id), v = parseInt(inp.value, 10);
+  Cart.set(id, Number.isInteger(v) && v > 0 ? Math.min(maxQty(p), v) : 1); draw();
+});
+
+(async () => {
+  try { ALL = await getProducts(); }
+  catch { $('cart').innerHTML = '<div class="state"><h2>Could not load your cart</h2><p>Please check your connection and try again.</p><button class="btn g" onclick="location.reload()">Try again</button></div>'; return; }
+  draw(); setInterval(async () => { try { ALL = await getProducts(); if (!document.activeElement?.matches('[data-q]')) draw(); } catch {} }, 60000);
+})();
+</script>
+</body></html>

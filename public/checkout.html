@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Checkout | Rizan Jewellery Singapore</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shop.css">
+</head><body>
+<main><div class="wrap">
+  <div class="steps" aria-label="Checkout progress"><span class="done"><a href="/cart">1 Cart</a></span><span class="on">2 Details</span><span>3 Confirmation</span></div>
+  <h1 class="ph1">Checkout</h1>
+  <div id="co"><div class="skel" style="height:360px"></div></div>
+</div></main>
+<script src="/shop.js"></script>
+<script>
+mountChrome();
+let ALL = [], lines = [], submitting = false, placed = false;
+const total = () => lines.reduce((s, l) => s + l.p.priceCents * l.q, 0);
+
+const MESSAGES = {
+  MISSING_NAME: 'Please enter your full name.',
+  MISSING_EMAIL: 'Please enter a valid email address.',
+  MISSING_PHONE: 'Please enter your phone number.',
+  MISSING_LINE1: 'Please enter your address.',
+  MISSING_POSTALCODE: 'Please enter your postal code.',
+  PRICE_UNAVAILABLE: 'Prices are being updated. Please try again in a moment.',
+  EMPTY_CART: 'Your cart is empty.',
+  BAD_ORIGIN: 'Security check failed. Please reload the page and try again.',
+};
+
+/* Build the cart lines from live product data. Anything that cannot be bought sends the customer back to the cart. */
+function buildLines() {
+  const cart = Cart.read();
+  lines = Object.entries(cart).map(([id, q]) => ({ p: ALL.find((x) => x.id === id), q }));
+  return lines.length && lines.every((l) => l.p && l.p.available && l.p.priceCents != null && l.q <= maxQty(l.p));
+}
+
+function summary() {
+  return `<aside class="sum" aria-label="Order summary"><h2>Order summary</h2>
+    ${lines.map((l) => `<div class="it"><span>${l.q} × ${esc(l.p.name)}</span><span>${sgd((l.p.priceCents * l.q) / 100)}</span></div>`).join('')}
+    <div class="ln tot"><span>Total</span><b id="tot">${sgd(total() / 100)}</b></div>
+    <a class="btn o wide" href="/cart">Edit cart</a></aside>`;
+}
+
+function render() {
+  $('co').innerHTML = `<div class="two"><form id="fm" novalidate>
+    <div class="box"><h2>Contact</h2><div class="fg">
+      <div class="full"><label class="f" for="name">Full name</label><input id="name" name="name" required autocomplete="name" maxlength="120"></div>
+      <div><label class="f" for="email">Email</label><input id="email" name="email" type="email" required autocomplete="email" inputmode="email" maxlength="160"></div>
+      <div><label class="f" for="phone">Phone</label><input id="phone" name="phone" type="tel" required autocomplete="tel" inputmode="tel" maxlength="30"></div>
+    </div></div>
+    <div class="box"><h2>Delivery address</h2><div class="fg">
+      <div class="full"><label class="f" for="line1">Address line 1</label><input id="line1" name="line1" required autocomplete="address-line1" maxlength="160"></div>
+      <div class="full"><label class="f" for="line2">Address line 2 (optional)</label><input id="line2" name="line2" autocomplete="address-line2" maxlength="160"></div>
+      <div><label class="f" for="postalCode">Postal code</label><input id="postalCode" name="postalCode" required autocomplete="postal-code" inputmode="numeric" maxlength="12"></div>
+    </div></div>
+    <div id="alert"></div>
+    <p class="err" id="er" role="alert"></p>
+    <button class="btn g wide" id="pl" type="submit">Place order</button>
+    <p class="note" style="margin-top:12px">${RZ.paymentConnected ? 'You will be taken to payment next.' : 'Online payment is not connected yet. Your order is recorded and we will contact you to arrange payment.'} The final price is confirmed when you place your order.</p>
+  </form>${summary()}</div>`;
+  $('fm').onsubmit = place;
+}
+
+function showPriceChange(newTotal) {
+  $('alert').innerHTML = `<div class="alert">Prices have moved with the market. The new total is <b>${sgd(newTotal / 100)}</b>. Please review it and place your order again.</div>`;
+}
+
+async function place(e) {
+  e.preventDefault(); if (submitting) return;
+  const f = Object.fromEntries(new FormData($('fm')).entries());
+  for (const k of ['name', 'email', 'phone', 'line1', 'postalCode']) {
+    if (!String(f[k] || '').trim()) { $('er').textContent = MESSAGES['MISSING_' + k.toUpperCase()]; $(k).focus(); return; }
+  }
+  if (!/^\S+@\S+\.\S+$/.test(f.email)) { $('er').textContent = MESSAGES.MISSING_EMAIL; $('email').focus(); return; }
+  $('er').textContent = ''; $('alert').innerHTML = '';
+  submitting = true; $('pl').disabled = true; $('pl').textContent = 'Placing order…';
+  try {
+    const r = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      customer: { name: f.name, email: f.email, phone: f.phone },
+      address: { line1: f.line1, line2: f.line2, postalCode: f.postalCode },
+      items: lines.map((l) => ({ id: l.p.id, qty: l.q })),
+      expectedTotalCents: total(),   // server rejects with PRICE_CHANGED if the live total differs
+    }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (j.error === 'PRICE_CHANGED') { await reload(); showPriceChange(j.totalCents); }
+      else if (j.error === 'UNAVAILABLE') { $('er').innerHTML = `${esc(j.product || 'An item')} is no longer available in that quantity. <a href="/cart" style="text-decoration:underline">Back to cart</a>`; await reload(); }
+      else $('er').textContent = MESSAGES[j.error] || 'Something went wrong. Please check your details and try again.';
+      return;
+    }
+    /* ---------------------------------------------------------------
+       PAYMENT INTEGRATION POINT
+       The order now exists on the server with status AWAITING_PAYMENT.
+       j.number and j.totalCents identify it. When you add a gateway,
+       create the payment session here (or on the server in POST /api/orders)
+       and redirect to it. On the gateway's success webhook, set the order
+       to PAID. Do not trust a redirect alone as proof of payment.
+       --------------------------------------------------------------- */
+    try { sessionStorage.setItem('rz_last', JSON.stringify({ number: j.number, totalCents: j.totalCents })); } catch {}
+    placed = true; Cart.clear();
+    location.href = '/thank-you';
+  } catch {
+    $('er').textContent = 'Network problem. Your order was not placed. Please try again.';
+  } finally {
+    if (!placed) submitting = false; if (!placed && $('pl')) { $('pl').disabled = false; $('pl').textContent = 'Place order'; }
+  }
+}
+
+/* refresh product data after a conflict, keep what the customer typed */
+async function reload() {
+  try { ALL = await getProducts(); } catch {}
+  if (!buildLines()) { location.href = '/cart'; return; }
+  const sum = document.querySelector('.sum'); if (sum) sum.outerHTML = summary();
+}
+
+(async () => {
+  try { ALL = await getProducts(); }
+  catch { $('co').innerHTML = '<div class="state"><h2>Could not load checkout</h2><p>Please check your connection and try again.</p><button class="btn g" onclick="location.reload()">Try again</button></div>'; return; }
+  if (!buildLines()) { location.replace('/cart'); return; }
+  render();
+})();
+</script>
+</body></html>

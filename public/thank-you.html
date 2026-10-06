@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Order received | Rizan Jewellery Singapore</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shop.css">
+</head><body>
+<main><div class="wrap">
+  <div class="steps" aria-label="Checkout progress"><span class="done">1 Cart</span><span class="done">2 Details</span><span class="on">3 Confirmation</span></div>
+  <div class="thx" id="thx"></div>
+</div></main>
+<script src="/shop.js"></script>
+<script>
+mountChrome();
+let last = null; try { last = JSON.parse(sessionStorage.getItem('rz_last') || 'null'); } catch {}
+$('thx').innerHTML = last && last.number ? `
+  <div class="tick" aria-hidden="true">&#10003;</div>
+  <h1 class="ph1" style="margin-bottom:6px">Thank you</h1>
+  <p class="note">Your order number is</p>
+  <div class="num">${esc(last.number)}</div>
+  <p style="margin-bottom:6px">Total <b style="font-weight:400;color:var(--gold2)">${sgd(last.totalCents / 100)}</b></p>
+  <p class="note" style="margin-bottom:28px">${RZ.paymentConnected ? 'We will email you once your payment is confirmed.' : 'Payment has not been taken yet. We will contact you to arrange payment. Please keep your order number.'}</p>
+  <a class="btn g" href="/">Continue shopping</a>` : `
+  <h1 class="ph1">Nothing to show here</h1>
+  <p class="note" style="margin-bottom:24px">If you just placed an order, please check your email or contact us with your order number.</p>
+  <a class="btn g" href="/">Back to shop</a>`;
+</script>
+</body></html>
